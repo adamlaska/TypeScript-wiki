@@ -27,6 +27,7 @@ Beyond best-practices, there are some common techniques for investigating slow c
   * [`extendedDiagnostics`](#extendeddiagnostics)
   * [`showConfig`](#showconfig)
   * [`listFilesOnly`](#listFilesOnly)
+  * [`explainFiles`](#explainfiles)
   * [`traceResolution`](#traceresolution)
   * [Running `tsc` Alone](#running-tsc-alone)
   * [Upgrading Dependencies](#upgrading-dependencies)
@@ -37,6 +38,7 @@ Beyond best-practices, there are some common techniques for investigating slow c
   * [Reporting Compiler Perf Issues](#reporting-compiler-performance-issues)
     + [Providing Performance Traces](#providing-performance-traces)
     + [Profiling the Compiler](#profiling-the-compiler)
+    + [Profiling the Compiler with pprof](#profiling-the-compiler-with-pprof)
   * [Reporting Editing Perf Issues](#reporting-editing-performance-issues)
     + [Taking a TSServer Log](#taking-a-tsserver-log)
       - [Collecting a TSServer Log in Visual Studio Code](#collecting-a-tsserver-log-in-visual-studio-code)
@@ -491,6 +493,15 @@ Isolated file emit can be leveraged by using the following tools:
 * [ts-jest](https://kulshekhar.github.io/ts-jest/) can use be configured with the [`isolatedModules` flag set to `true`]isolatedModules: true(.
 * [ts-node](https://www.npmjs.com/package/ts-node) can detect [the `"transpileOnly"` option in the `"ts-node"` field of a `tsconfig.json`, and also has a `--transpile-only` flag](https://www.npmjs.com/package/ts-node#cli-and-programmatic-options).
 
+# Optimizing Editing Experience; Performance of `ts-server`
+
+In-editor diagnostics are typically fetched a few seconds after typing stops.
+`ts-server`'s performance characteristics will always be related to the performance of type-checking your entire project using `tsc`, so the other performance optimization guidance here also applies to improving the editing experience.
+As you type, the checker is completely starting from scratch, but it only requests information about what you're typing.
+This means that the editing experience can vary based on how much work TypeScript needs to do to check the type of what you are actively editing.
+In most editors, like VS Code, diagnostics are requested for all open files, not the entire project.
+Accordingly, diagnostics will appear faster compared to checking the entire project with `tsc`, but slower than viewing a type with hover, since viewing a type with hover _only_ asks TypeScript to compute and check that specific type.
+
 # Investigating Issues
 
 There are certain ways to get hints of what might be going wrong.
@@ -652,9 +663,11 @@ Note that, even if your build doesn't directly invoke `tsc` (e.g. because you us
 
 You can [read more about performance tracing in more detail here](https://github.com/microsoft/TypeScript/wiki/Performance-Tracing).
 
-⚠ Warning: A performance trace may include information from your workspace, including file paths and source code. If you have any concerns about posting this publicly on GitHub, let us know and you can share the details privately.
+> [!WARNING]
+> A performance trace may include information from your workspace, including file paths and source code. If you have any concerns about posting this publicly on GitHub, let us know and you can share the details privately.
 
-⚠ Warning: The format of performance trace files is not stable, and may change from version to version.
+> [!WARNING]
+> The format of performance trace files is not stable, and may change from version to version.
 
 # Common Issues
 
@@ -717,10 +730,10 @@ See the above section on [performance traces](#performance-tracing) and continue
 
 ### Profiling the Compiler
 
-It is important to provide the team with diagnostic traces by running Node.js v10+ with the `--trace-ic` flag alongside TypeScript with the `--generateCpuProfile` flag:
+You can provide the team with diagnostic traces by running `dexnode` alongside TypeScript with the `--generateCpuProfile` flag:
 
 ```sh
-node --trace-ic ./node_modules/typescript/lib/tsc.js --generateCpuProfile profile.cpuprofile -p tsconfig.json
+npm exec dexnode -- ./node_modules/typescript/lib/tsc.js --generateCpuProfile profile.cpuprofile -p tsconfig.json
 ```
 
 Here `./node_modules/typescript/lib/tsc.js` can be replaced with any path to where your version of the TypeScript compiler is installed, and `tsconfig.json` can be any TypeScript configuration file.
@@ -728,13 +741,49 @@ Here `./node_modules/typescript/lib/tsc.js` can be replaced with any path to whe
 
 This will generate two files:
 
-* `--trace-ic` will emit to a file of the `isolate-*-*-*.log` (e.g. `isolate-00000176DB2DF130-17676-v8.log`).
+* `dexnode` will emit to a file of the `isolate-*-*-*.log` (e.g. `isolate-00000176DB2DF130-17676-v8.log`).
 * `--generateCpuProfile` will emit to a file with the name of your choice. In the above example, it will be a file named `profile.cpuprofile`.
 
-> ⚠ Warning: These files may include information from your workspace, including file paths and source code.
+> [!WARNING]
+> These files may include information from your workspace, including file paths and source code.
 > Both of these files are readable as plain-text, and you can modify them before attaching them as part of a GitHub issue. (e.g. to scrub them of file paths that may expose internal-only information).
 >
 > However, if you have any concerns about posting these publicly on GitHub, let us know and you can share the details privately.
+
+## Profiling the Compiler with pprof
+
+[pprof](https://github.com/google/pprof) is a helpful utility for visualizing CPU and memory profiles.
+pprof has different visualization modes that may make problem areas more obvious, and its profiles tend to be smaller than those produced from `--generateCpuProfile`.
+
+The easiest way to generate a profile for pprof is to use [pprof-it](https://github.com/jakebailey/pprof-it).
+There are [different ways to use pprof-it](https://github.com/jakebailey/pprof-it?tab=readme-ov-file#usage), but a quick way is to use npx or a similar tool:
+
+```sh
+npx pprof-it ./node_modules/typescript/lib/tsc.js ...
+```
+
+You can also install it locally:
+
+```sh
+npm install --no-save pprof-it
+```
+
+and run certain build scripts via npm, npx, and similar tools with the `--node-option` flag:
+
+```sh
+npm --node-option="--require pprof-it" run <your-script-name>
+```
+
+To actually view the generated profile with [pprof](https://github.com/google/pprof), the Go toolset is required at minimum, and Graphviz is required for certain visualization capabilities.
+[See more here](https://github.com/google/pprof?tab=readme-ov-file#building-pprof).
+
+Alternatively, you can use [SpeedScope](https://www.speedscope.app/) directly from your browser.
+
+> [!WARNING]
+> These files may include information from your workspace, including file paths.
+>
+> pprof-it does recognize [the `PPROF_SANITIZE` environment variable to sanitize your profiles](https://github.com/jakebailey/pprof-it?tab=readme-ov-file#options) before posting them publicly.
+> You can also share an unsanitized profile privately if you would prefer.
 
 ## Reporting Editing Performance Issues
 
@@ -757,4 +806,5 @@ Including the output from `tsc --extendedDiagnostics` is always good context, bu
 1. In VS Code, run the `TypeScript: Open TS Server log` command
 1. This should open the `tsserver.log` file.
 
-⚠ Warning: A TSServer log may include information from your workspace, including file paths and source code. If you have any concerns about posting this publicly on GitHub, let us know and you can share the details privately.
+> [!WARNING]
+> A TSServer log may include information from your workspace, including file paths and source code. If you have any concerns about posting this publicly on GitHub, let us know and you can share the details privately.
