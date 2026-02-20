@@ -1,3 +1,18 @@
+# Looking for a Faster TypeScript Build?
+
+We are porting the existing TypeScript codebase to Go so that it can take advantage of native code speed and parallelization. This codebase will be the foundation of TypeScript 7.0.
+
+See more at [the typescript-go repo](https://github.com/microsoft/typescript-go), or download it via the
+
+- [npm package](https://www.npmjs.com/package/@typescript/native-preview)
+- [VS Code extension](https://marketplace.visualstudio.com/items?itemName=TypeScriptTeam.native-preview)
+
+You can and should still use resources on this page to investigate issues with speed (e.g. take a performance trace with TypeScript 5.9/6.0 to tell you which part of your code is the slowest), but we are looking for feedback on these native previews which are often up to 10x faster.
+
+_____
+
+_____
+
 > # 🛑 Read carefully before you jump to conclusions on this page!
 
 There are easy ways to configure TypeScript to ensure faster compilations and editing experiences.
